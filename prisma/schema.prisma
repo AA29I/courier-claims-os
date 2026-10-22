@@ -1,0 +1,192 @@
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id                     String         @id @default(cuid())
+  name                   String
+  slug                   String         @unique
+  email                  String
+  phone                  String         @default("+44 161 850 9200")
+  address                String         @default("Unit 12 Logistics Distribution Park")
+  city                   String         @default("Manchester")
+  postcode               String         @default("M17 1PA")
+  country                String         @default("United Kingdom")
+  vatNumber              String         @default("GB 382 9104 22")
+  companyRegNumber       String         @default("11940281")
+  currency               String         @default("GBP")
+  linnworksAppId         String?
+  linnworksAppSecret     String?
+  linnworksToken         String?
+  linnworksAutoSync      Boolean        @default(false)
+  lastLinnworksSyncAt    DateTime?
+  senderName             String         @default("Claims & Dispatch Operations")
+  senderEmail            String         @default("claims@operations-hub.co.uk")
+  replyToEmail           String?
+  resendApiKey           String?
+  autoQueryOutOfSla      Boolean        @default(true)
+  autoClaimOnCourierLost Boolean        @default(true)
+  customColumnsJson      String         @default("[]")
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  users                  User[]
+  couriers               Courier[]
+  shipments              Shipment[]
+  queries                CourierQuery[]
+  claimInvoices          ClaimInvoice[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  name         String
+  email        String    @unique
+  passwordHash String?
+  authProvider String    @default("EMAIL")
+  role         String    @default("ADMIN")
+  createdAt    DateTime  @default(now())
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Courier {
+  id                        String         @id @default(cuid())
+  workspaceId               String
+  code                      String
+  name                      String
+  accountNumber             String         @default("")
+  trackingApiProvider       String         @default("DIRECT_REST_API")
+  apiKey                    String?
+  apiEndpoint               String?
+  isLiveApiConnected        Boolean        @default(true)
+  queryEmail                String         @default("")
+  claimsEmail               String         @default("")
+  defaultSlaDays            Int            @default(2)
+  stalledThresholdHours     Int            @default(48)
+  claimLossThresholdDays    Int            @default(7)
+  claimFilingWindowDays     Int            @default(28)
+  invoiceFormatName         String         @default("Standard Commercial Claim Invoice")
+  pricingBasis              String         @default("WHOLESALE_COST_EX_VAT")
+  maxLiabilityCap           Float?
+  includePostageRefund      Boolean        @default(true)
+  vatRatePercent            Float          @default(20.0)
+  invoiceHeaderTitle        String         @default("COMMERCIAL CONSIGNMENT LOSS CLAIM INVOICE")
+  invoiceRequiredFieldsJson String         @default("[]")
+  invoiceDeclarationText    String         @default("We hereby certify that the goods detailed above were dispatched via the stated carrier service, have exceeded the contractual loss threshold without delivery scan, and that the valuation claimed accurately reflects our recoverable commercial loss.")
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  workspace                 Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  shipments                 Shipment[]
+  queries                   CourierQuery[]
+  claimInvoices             ClaimInvoice[]
+
+  @@unique([workspaceId, code])
+}
+
+model Shipment {
+  id                    String         @id @default(cuid())
+  workspaceId           String
+  courierId             String
+  orderId               String
+  orderDate             DateTime
+  processedDate         DateTime
+  processedDay          String
+  country               String         @default("United Kingdom")
+  source                String         @default("SHOPIFY")
+  referenceNum          String         @default("")
+  postalService         String         @default("")
+  trackingNumber        String
+  latestUpdate          String         @default("Dispatched from warehouse")
+  slaStatus             String         @default("Within Transit Time")
+  lastScanDate          DateTime
+  lastScanDay           String
+  slaDays               Int            @default(2)
+  estimatedDeliveryDate DateTime
+  estimatedDeliveryDay  String
+  formulaDate           DateTime       @default(now())
+  formulaDaysCount      Int            @default(0)
+  slaForClaims          Int            @default(0)
+  courierName           String
+  reportTab             String         @default("IN_TRANSIT")
+  recipientName         String         @default("Valued Customer")
+  recipientEmail        String         @default("")
+  recipientPhone        String         @default("")
+  recipientAddress      String         @default("")
+  recipientCity         String         @default("")
+  recipientPostcode     String         @default("")
+  sku                   String         @default("SKU-001")
+  itemTitle             String         @default("Commercial Merchandise")
+  quantity              Int            @default(1)
+  retailValue           Float          @default(49.99)
+  wholesaleCost         Float          @default(22.50)
+  postageCost           Float          @default(4.85)
+  currency              String         @default("GBP")
+  trackingHistoryJson   String         @default("[]")
+  customFieldsJson      String         @default("{}")
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  workspace             Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  courier               Courier        @relation(fields: [courierId], references: [id], onDelete: Cascade)
+  queries               CourierQuery[]
+  claimInvoices         ClaimInvoice[]
+
+  @@unique([workspaceId, trackingNumber])
+}
+
+model CourierQuery {
+  id                   String    @id @default(cuid())
+  workspaceId          String
+  shipmentId           String
+  courierId            String
+  queryReference       String
+  recipientEmail       String
+  subject              String
+  emailBodySent        String
+  status               String    @default("SENT_AWAITING_REPLY")
+  courierReplyText     String?
+  courierRepliedAt     DateTime?
+  autoTriggeredClaimId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  shipment             Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  courier              Courier   @relation(fields: [courierId], references: [id], onDelete: Cascade)
+}
+
+model ClaimInvoice {
+  id                        String    @id @default(cuid())
+  workspaceId               String
+  shipmentId                String
+  courierId                 String
+  invoiceNumber             String    @unique
+  claimReference            String
+  status                    String    @default("SUBMITTED_TO_COURIER")
+  pricingBasisUsed          String
+  merchandiseClaimAmount    Float
+  postageClaimAmount        Float
+  vatAmount                 Float     @default(0.0)
+  totalClaimAmount          Float
+  approvedAmount            Float?
+  creditNoteNumber          String?
+  invoiceFormatSnapshotJson String
+  sentToEmail               String
+  submittedAt               DateTime  @default(now())
+  settledAt                 DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  workspace                 Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  shipment                  Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  courier                   Courier   @relation(fields: [courierId], references: [id], onDelete: Cascade)
+}
